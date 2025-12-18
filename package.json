@@ -29,8 +29,15 @@
   ],
   "commands": [
     {
+      "name": "grid-remote",
+      "title": "Apple TV Remote (Grid)",
+      "subtitle": "Remote Control",
+      "description": "Control your Apple TV with a grid-style remote",
+      "mode": "view"
+    },
+    {
       "name": "control-apple-tv",
-      "title": "Control Apple TV",
+      "title": "Control Apple TV (List)",
       "subtitle": "Remote Control",
       "description": "Send remote control commands to your Apple TV",
       "mode": "view"
@@ -54,6 +61,20 @@
       "title": "Now Playing on Apple TV",
       "subtitle": "Playback Info",
       "description": "View what's currently playing on your Apple TV",
+      "mode": "view"
+    },
+    {
+      "name": "turn-on-apple-tv",
+      "title": "Turn On Apple TV",
+      "subtitle": "Power",
+      "description": "Turn on your Apple TV by clicking the home button",
+      "mode": "no-view"
+    },
+    {
+      "name": "volume-control",
+      "title": "Volume Control",
+      "subtitle": "Volume",
+      "description": "Control the volume on your Apple TV",
       "mode": "view"
     }
   ],
