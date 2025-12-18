@@ -1,0 +1,3 @@
+# Apple TV Remote Changelog
+
+## [Initial Version] - {PR_MERGE_DATE}
