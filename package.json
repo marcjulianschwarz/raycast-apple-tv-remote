@@ -9,24 +9,6 @@
     "macOS"
   ],
   "license": "MIT",
-  "preferences": [
-    {
-      "name": "condaEnvironment",
-      "type": "textfield",
-      "required": false,
-      "title": "Conda Environment",
-      "description": "Name of the conda environment where pyatv is installed (e.g., 'pyatv-env'). Leave empty to use system Python.",
-      "placeholder": "pyatv-env"
-    },
-    {
-      "name": "condaPath",
-      "type": "textfield",
-      "required": false,
-      "title": "Conda Path",
-      "description": "Custom path to conda executable (optional). Defaults to 'conda' in PATH.",
-      "placeholder": "/opt/homebrew/anaconda3/bin/conda"
-    }
-  ],
   "commands": [
     {
       "name": "grid-remote",
@@ -46,14 +28,7 @@
       "name": "scan-devices",
       "title": "Scan for Apple TV Devices",
       "subtitle": "Device Discovery",
-      "description": "Scan your network for Apple TV devices",
-      "mode": "view"
-    },
-    {
-      "name": "pair-device",
-      "title": "Pair with Apple TV",
-      "subtitle": "Device Setup",
-      "description": "Pair with an Apple TV device for control",
+      "description": "Scan your network for Apple TV devices, pair them and set a default",
       "mode": "view"
     },
     {

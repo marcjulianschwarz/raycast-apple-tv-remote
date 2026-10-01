@@ -1,4 +1,14 @@
-import { List, ActionPanel, Action, showToast, Toast, Icon, Color } from "@raycast/api";
+import {
+  List,
+  ActionPanel,
+  Action,
+  showToast,
+  Toast,
+  Icon,
+  Color,
+  launchCommand,
+  LaunchType,
+} from "@raycast/api";
 import { executeATVCommand, getDefaultDevice } from "./utils";
 
 interface VolumeButton {
@@ -32,11 +42,7 @@ export default function VolumeControl() {
 
     defaultDevice.then((device) => {
       if (!device) {
-        showToast({
-          style: Toast.Style.Failure,
-          title: "No default device",
-          message: "Scan for devices first and set a default",
-        });
+        launchCommand({ name: "scan-devices", type: LaunchType.UserInitiated });
         return;
       }
 

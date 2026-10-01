@@ -1,6 +1,11 @@
-import { List, ActionPanel, Action, showToast, Toast, Icon } from "@raycast/api";
+import { List, ActionPanel, Action, showToast, Toast, Icon, launchCommand, LaunchType } from "@raycast/api";
 import { useState, useEffect } from "react";
-import { executeATVCommand, checkPyATVInstalled, getDefaultDevice } from "./utils";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { checkPyATVInstalled, getDefaultDevice, getStoredCredentials } from "./utils";
+import { atvremotePath } from "./python-env";
+
+const execFileAsync = promisify(execFile);
 
 interface PlayingInfo {
   title?: string;
@@ -25,17 +30,19 @@ export default function NowPlaying() {
 
       const defaultDevice = await getDefaultDevice();
       if (!defaultDevice) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "No default device",
-          message: "Scan for devices first and set a default",
-        });
-        setIsLoading(false);
+        await launchCommand({ name: "scan-devices", type: LaunchType.UserInitiated });
         return;
       }
 
       try {
-        const output = await executeATVCommand(defaultDevice, "playing");
+        const credentials = await getStoredCredentials(defaultDevice);
+        const args = ["-s", defaultDevice];
+        if (credentials?.companion) args.push("--companion-credentials", credentials.companion);
+        if (credentials?.airplay) args.push("--airplay-credentials", credentials.airplay);
+        const { stdout: output } = await execFileAsync(atvremotePath, [...args, "playing"], {
+          encoding: "utf-8",
+          timeout: 30000,
+        });
         const parsedInfo = parsePlayingInfo(output);
         setInfo(parsedInfo);
       } catch (error) {

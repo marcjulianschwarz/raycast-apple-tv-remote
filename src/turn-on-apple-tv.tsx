@@ -1,4 +1,4 @@
-import { showToast, Toast, showHUD } from "@raycast/api";
+import { showToast, Toast, showHUD, launchCommand, LaunchType } from "@raycast/api";
 import { executeATVCommand, getDefaultDevice } from "./utils";
 
 export default async function TurnOnAppleTV() {
@@ -6,11 +6,7 @@ export default async function TurnOnAppleTV() {
     const defaultDevice = await getDefaultDevice();
 
     if (!defaultDevice) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "No default device",
-        message: "Scan for devices first and set a default",
-      });
+      await launchCommand({ name: "scan-devices", type: LaunchType.UserInitiated });
       return;
     }
 

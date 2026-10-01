@@ -1,97 +1,28 @@
-import { execSync } from "child_process";
-import { showToast, Toast, LocalStorage, getPreferenceValues } from "@raycast/api";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { showToast, Toast, LocalStorage } from "@raycast/api";
 import { sendWebSocketCommand } from "./websocket-client";
+import { atvremotePath, installPyATV } from "./python-env";
+
+const execFileAsync = promisify(execFile);
 
 export interface AppleTVDevice {
   name: string;
   address: string;
   identifier: string;
-}
-
-interface Preferences {
-  condaEnvironment?: string;
-  condaPath?: string;
-}
-
-export function getCondaPrefix(): string {
-  const preferences = getPreferenceValues<Preferences>();
-
-  if (!preferences.condaEnvironment) {
-    return "";
-  }
-
-  const condaCmd = preferences.condaPath || "conda";
-  return `${condaCmd} run -n ${preferences.condaEnvironment} `;
-}
-
-export function getCondaBinPath(): string | null {
-  const preferences = getPreferenceValues<Preferences>();
-
-  if (!preferences.condaEnvironment) {
-    return null;
-  }
-
-  try {
-    const condaCmd = preferences.condaPath || "conda";
-    // Get conda environment info to find the bin path
-    const output = execSync(`${condaCmd} info --envs`, {
-      encoding: "utf-8",
-      timeout: 10000,
-    });
-
-    // Parse the output to find the environment path
-    const lines = output.split("\n");
-    for (const line of lines) {
-      if (line.includes(preferences.condaEnvironment)) {
-        // Format: "envname    *  /path/to/env" or "envname       /path/to/env"
-        const parts = line.split(/\s+/);
-        const envPath = parts[parts.length - 1];
-        if (envPath && envPath.startsWith("/")) {
-          return `${envPath}/bin`;
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error getting conda bin path:", error);
-  }
-
-  return null;
+  model: string;
 }
 
 export async function checkPyATVInstalled(): Promise<boolean> {
   try {
-    // Try direct bin path first, fall back to conda run
-    const condaBinPath = getCondaBinPath();
-    const cmd = condaBinPath ? `test -f ${condaBinPath}/atvremote` : "which atvremote";
-
-    execSync(cmd, {
-      encoding: "utf-8",
-      timeout: 10000,
-      maxBuffer: 1024 * 1024 * 10,
-    });
+    await installPyATV();
     return true;
   } catch (error: unknown) {
-    const preferences = getPreferenceValues<Preferences>();
-    const errorDetails = error instanceof Error ? error.message : String(error);
-
-    // Check for Python 3.14 incompatibility
-    if (errorDetails.includes("Pydantic V1 functionality isn't compatible with Python 3.14")) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Python version incompatible",
-        message: "pyatv requires Python 3.11 or 3.12. Recreate your conda env with python=3.12",
-      });
-      return false;
-    }
-
-    const installMsg = preferences.condaEnvironment
-      ? `conda activate ${preferences.condaEnvironment} && pip install pyatv`
-      : "pip install pyatv";
-
+    console.error("Error installing pyatv:", error);
     await showToast({
       style: Toast.Style.Failure,
-      title: "pyatv not installed",
-      message: `Install with: ${installMsg}`,
+      title: "pyatv setup failed",
+      message: error instanceof Error ? error.message : String(error),
     });
     return false;
   }
@@ -99,13 +30,9 @@ export async function checkPyATVInstalled(): Promise<boolean> {
 
 export async function scanForDevices(): Promise<AppleTVDevice[]> {
   try {
-    // Use direct bin path for better performance instead of conda run
-    const condaBinPath = getCondaBinPath();
-    const cmd = condaBinPath ? `${condaBinPath}/atvremote scan` : "atvremote scan";
+    console.log("Executing scan command:", atvremotePath, "scan");
 
-    console.log("Executing scan command:", cmd);
-
-    const output = execSync(cmd, {
+    const { stdout: output } = await execFileAsync(atvremotePath, ["scan"], {
       encoding: "utf-8",
       timeout: 30000,
       maxBuffer: 1024 * 1024 * 10,
@@ -148,6 +75,8 @@ export async function scanForDevices(): Promise<AppleTVDevice[]> {
         currentDevice = { name: trimmed.substring(5).trim() };
       } else if (trimmed.startsWith("Address:")) {
         currentDevice.address = trimmed.substring(8).trim();
+      } else if (trimmed.startsWith("Model/SW:")) {
+        currentDevice.model = trimmed.substring(9).trim();
       }
     }
 
@@ -158,7 +87,8 @@ export async function scanForDevices(): Promise<AppleTVDevice[]> {
 
     console.log("Parsed devices:", devices);
 
-    return devices;
+    // Scan also finds HomePods, Macs and other AirPlay receivers that cannot be controlled
+    return devices.filter((device) => device.model?.startsWith("Apple TV"));
   } catch (error: unknown) {
     console.error("Error scanning for devices:", error);
     const errorDetails = error instanceof Error ? error.message : String(error);
@@ -166,18 +96,11 @@ export async function scanForDevices(): Promise<AppleTVDevice[]> {
     console.error("Error details:", errorDetails);
     console.error("Error stack:", errorStack);
 
-    // Check for Python 3.14 incompatibility
-    if (errorDetails.includes("Pydantic V1 functionality isn't compatible with Python 3.14")) {
-      throw new Error(
-        "Python 3.14+ is not compatible with pyatv. Please recreate your conda environment with Python 3.11 or 3.12:\nconda create -n pyatv-env python=3.12 && conda activate pyatv-env && pip install pyatv",
-      );
-    }
-
     throw new Error(`Failed to scan for Apple TV devices: ${errorDetails}`);
   }
 }
 
-// Map our commands to ATV Desktop Remote's command format
+// Map our commands to the ATV server's key names
 function mapCommandName(command: string): string {
   const commandMap: Record<string, string> = {
     // Playback mappings
@@ -191,12 +114,18 @@ function mapCommandName(command: string): string {
 
 export async function executeATVCommand(deviceAddress: string, command: string): Promise<string> {
   try {
+    await installPyATV();
+    const credentials = await getStoredCredentials(deviceAddress);
+
     // Map command to their format
     const mappedCommand = mapCommandName(command);
 
     // Fire-and-forget! Send command instantly without waiting
     console.log("Sending command via WebSocket:", mappedCommand);
-    sendWebSocketCommand(mappedCommand);
+    sendWebSocketCommand(
+      { address: deviceAddress, companion: credentials?.companion ?? "", airplay: credentials?.airplay ?? "" },
+      mappedCommand,
+    );
 
     // Return immediately for instant feel
     return JSON.stringify({ status: "sent", command: mappedCommand });
@@ -243,8 +172,13 @@ export async function storeCredentials(deviceAddress: string, airplay?: string, 
   await LocalStorage.setItem(`credentials_${deviceAddress}`, JSON.stringify(credentials));
 }
 
+// Only a paired default device counts, so unpaired devices go through setup
 export async function getDefaultDevice(): Promise<string | null> {
-  return (await LocalStorage.getItem<string>("default_device")) || null;
+  const address = await LocalStorage.getItem<string>("default_device");
+  if (!address || !(await getStoredCredentials(address))) {
+    return null;
+  }
+  return address;
 }
 
 export async function setDefaultDevice(deviceAddress: string): Promise<void> {

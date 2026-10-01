@@ -1,9 +1,18 @@
 import WebSocket from "ws";
+import { startATVServer } from "./python-env";
+
+export interface ATVConnectInfo {
+  address: string;
+  companion: string;
+  airplay: string;
+}
 
 let ws: WebSocket | null = null;
 let connecting = false;
 let wsConnected = false;
-const WS_URL = "ws://localhost:8765";
+let serverStarted = false;
+let connectInfo: ATVConnectInfo | null = null;
+const WS_URL = "ws://127.0.0.1:8765";
 const pending: Array<[string, unknown]> = [];
 const RECONNECT_INTERVAL = 800;
 let reconnectTimeout: NodeJS.Timeout | null = null;
@@ -24,6 +33,7 @@ function sendMessage(command: string, data: unknown = ""): void {
   // Queue if not connected
   if (!ws || !wsConnected) {
     pending.push([command, data]);
+    if (!ws) startWebSocket();
     return;
   }
 
@@ -49,7 +59,14 @@ function startWebSocket(): void {
   ws.once("open", () => {
     wsConnected = true;
     connecting = false;
-    console.log("WebSocket connected to ATV Desktop Remote");
+    // Allow a new start if the server exits later (idle timeout)
+    serverStarted = false;
+    console.log("WebSocket connected to ATV server");
+
+    // The server may have restarted, so always tell it which device to use
+    if (connectInfo) {
+      ws?.send(JSON.stringify({ cmd: "connect", data: connectInfo }));
+    }
 
     // Flush any pending messages
     while (pending.length > 0) {
@@ -69,6 +86,12 @@ function startWebSocket(): void {
     wsConnected = false;
     connecting = false;
     console.error("WebSocket error:", error);
+
+    // Start the local server once if nothing listens yet
+    if (!serverStarted && (error as NodeJS.ErrnoException).code === "ECONNREFUSED") {
+      serverStarted = true;
+      startATVServer();
+    }
   });
 
   ws.on("message", (data) => {
@@ -77,11 +100,12 @@ function startWebSocket(): void {
   });
 }
 
-// Start connection immediately when module loads
-startWebSocket();
-
 // Fire-and-forget command sending (instant, no blocking!)
-export function sendWebSocketCommand(command: string): void {
+export function sendWebSocketCommand(target: ATVConnectInfo, command: string): void {
+  if (!connectInfo || JSON.stringify(connectInfo) !== JSON.stringify(target)) {
+    connectInfo = target;
+    if (wsConnected) sendMessage("connect", target);
+  }
   sendMessage("key", command);
 }
 
